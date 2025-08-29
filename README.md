@@ -100,16 +100,12 @@ curl -X POST -H "Content-Type: application/json" \
 md2mobi/
 ├── app.py                 # Flask主应用
 ├── run.py                 # 启动脚本
-├── md2ebook.py           # 原始转换器模块
 ├── requirements-web.txt   # Web版本依赖
-├── start.bat             # Windows启动脚本
-├── start.sh              # Linux/Mac启动脚本
 ├── templates/
 │   └── index.html        # 主页模板
 ├── static/
 │   └── style.css         # 样式文件
-├── uploads/              # 上传文件临时目录
-└── output/               # 生成文件输出目录
+
 ```
 
 ## 🔧 配置选项
