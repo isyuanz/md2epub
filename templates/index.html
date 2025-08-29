@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown to EPUB 转换器</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📚 Markdown to EPUB 转换器</h1>
+            <p>将您的 Markdown 文档快速转换为精美的 EPUB 电子书</p>
+        </div>
+
+        <div class="main-content">
+            <div class="content-wrapper">
+                <div class="left-panel">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="bookTitle">书籍标题 *</label>
+                            <input type="text" id="bookTitle" placeholder="请输入书籍标题" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="bookAuthor">作者姓名 *</label>
+                            <input type="text" id="bookAuthor" placeholder="请输入作者姓名" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>封面图片 (可选)</label>
+                        <div class="upload-area" id="coverUploadArea">
+                            <div class="upload-icon">🖼️</div>
+                            <p>点击上传封面图片</p>
+                            <p style="color: #666;">JPG/PNG, 建议 600x800</p>
+                        </div>
+                        <input type="file" id="coverInput" accept="image/*" style="display: none;">
+                    </div>
+                </div>
+
+                <div class="right-panel">
+                    <div class="textarea-wrapper">
+                        <div class="textarea-header">
+                            <label for="markdownInput">Markdown 内容 *</label>
+                            <button class="file-upload-btn" id="fileUploadBtn">
+                                📄 上传文件
+                            </button>
+                            <input type="file" id="fileInput" accept=".md,.markdown,.txt" style="display: none;">
+                        </div>
+                        <textarea id="markdownInput" placeholder="在此处粘贴或输入您的 Markdown 内容...
+
+示例：
+# 第一章
+这是第一章的内容
+
+## 第一节  
+这里是详细内容...
+
+# 第二章
+第二章内容..."></textarea>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="button-group">
+                <button class="btn" id="generateBtn">⬇️ 生成 EPUB</button>
+            </div>
+
+            <div id="statusMessage" class="status"></div>
+        </div>
+
+        <div class="footer">
+            <p>&copy; 2024 元子Channel - All rights reserved</p>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let coverFileId = null;
+        
+        // DOM元素
+        const elements = {
+            bookTitle: document.getElementById('bookTitle'),
+            bookAuthor: document.getElementById('bookAuthor'),
+            markdownInput: document.getElementById('markdownInput'),
+            fileInput: document.getElementById('fileInput'),
+            coverInput: document.getElementById('coverInput'),
+            coverUploadArea: document.getElementById('coverUploadArea'),
+            fileUploadBtn: document.getElementById('fileUploadBtn'),
+            generateBtn: document.getElementById('generateBtn'),
+            statusMessage: document.getElementById('statusMessage')
+        };
+
+        // 事件监听器
+        function initializeEventListeners() {
+            // 文件上传
+            elements.fileUploadBtn.addEventListener('click', () => {
+                elements.fileInput.click();
+            });
+
+            elements.fileInput.addEventListener('change', handleFileUpload);
+
+            // 封面上传
+            elements.coverUploadArea.addEventListener('click', () => {
+                elements.coverInput.click();
+            });
+
+            elements.coverInput.addEventListener('change', handleCoverUpload);
+
+            // 按钮事件
+            elements.generateBtn.addEventListener('click', generateEpub);
+
+            // 拖拽上传
+            setupDragAndDrop();
+        }
+
+        // 文件上传处理
+        async function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                showStatus('正在上传文件...', 'loading');
+                
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    elements.markdownInput.value = result.content;
+                    
+                    // 如果标题为空，使用文件名
+                    if (!elements.bookTitle.value.trim()) {
+                        elements.bookTitle.value = result.title;
+                    }
+                    
+                    showStatus('文件上传成功！', 'success');
+                } else {
+                    showStatus(result.error, 'error');
+                }
+            } catch (error) {
+                showStatus('上传失败：' + error.message, 'error');
+            }
+        }
+
+        // 封面上传处理
+        async function handleCoverUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                showStatus('正在上传封面...', 'loading');
+                
+                const response = await fetch('/api/upload_cover', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    coverFileId = result.cover_id;
+                    
+                    // 更新上传区域显示
+                    elements.coverUploadArea.innerHTML = `
+                        <div class="upload-icon">✅</div>
+                        <p>已选择封面: ${result.filename}</p>
+                        <p style="font-size: 0.8em; color: #666;">点击重新选择</p>
+                    `;
+                    
+                    showStatus('封面上传成功！', 'success');
+                } else {
+                    showStatus(result.error, 'error');
+                }
+            } catch (error) {
+                showStatus('封面上传失败：' + error.message, 'error');
+            }
+        }
+
+
+        // 生成EPUB
+        async function generateEpub() {
+            const title = elements.bookTitle.value.trim();
+            const author = elements.bookAuthor.value.trim();
+            const content = elements.markdownInput.value.trim();
+
+            if (!title || !author || !content) {
+                showStatus('请填写完整的书籍信息和 Markdown 内容', 'error');
+                return;
+            }
+
+            elements.generateBtn.disabled = true;
+            
+            try {
+                showStatus('正在生成 EPUB 文件...', 'loading');
+
+                const response = await fetch('/api/convert', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        title,
+                        author,
+                        content,
+                        cover_id: coverFileId
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showStatus('EPUB 文件生成成功！正在下载...', 'success');
+                    
+                    // 触发下载
+                    const downloadUrl = `/api/download/${result.download_id}`;
+                    window.location.href = downloadUrl;
+                } else {
+                    showStatus(result.error, 'error');
+                }
+            } catch (error) {
+                showStatus('生成失败：' + error.message, 'error');
+            } finally {
+                elements.generateBtn.disabled = false;
+            }
+        }
+
+        // 状态显示
+        function showStatus(message, type) {
+            elements.statusMessage.className = `status ${type}`;
+            
+            if (type === 'loading') {
+                elements.statusMessage.innerHTML = `<span class="loading-spinner"></span>${message}`;
+            } else {
+                elements.statusMessage.innerHTML = message;
+            }
+            
+            elements.statusMessage.style.display = 'block';
+            
+            if (type !== 'loading') {
+                setTimeout(() => {
+                    elements.statusMessage.style.display = 'none';
+                }, 5000);
+            }
+        }
+
+        // 拖拽上传
+        function setupDragAndDrop() {
+            const uploadAreas = [elements.coverUploadArea, elements.markdownInput];
+            
+            uploadAreas.forEach(area => {
+                area.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    area.classList.add('dragover');
+                });
+
+                area.addEventListener('dragleave', () => {
+                    area.classList.remove('dragover');
+                });
+
+                area.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    area.classList.remove('dragover');
+                    
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0) {
+                        const file = files[0];
+                        
+                        if (area === elements.coverUploadArea) {
+                            // 封面图片上传
+                            if (file.type.startsWith('image/')) {
+                                elements.coverInput.files = files;
+                                handleCoverUpload({target: {files: files}});
+                            }
+                        } else {
+                            // Markdown文件上传
+                            if (file.name.match(/\.(md|markdown|txt)$/i)) {
+                                elements.fileInput.files = files;
+                                handleFileUpload({target: {files: files}});
+                            }
+                        }
+                    }
+                });
+            });
+        }
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeEventListeners();
+            console.log('📚 Markdown to EPUB 转换器已就绪');
+        });
+    </script>
+</body>
+</html>
